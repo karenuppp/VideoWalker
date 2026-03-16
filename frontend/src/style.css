@@ -1,0 +1,49 @@
+:root {
+  --gov-primary: #1677ff;
+  --gov-primary-soft: #eaf3ff;
+  --gov-accent: #0f5cd6;
+  --gov-border: #d8e2f0;
+  --gov-bg: #f3f7fc;
+  --gov-text: #1f2937;
+
+  --el-color-primary: var(--gov-primary);
+  --el-color-primary-light-3: #4f98ff;
+  --el-color-primary-light-5: #7eb4ff;
+  --el-color-primary-light-7: #a9ceff;
+  --el-color-primary-light-8: #c7deff;
+  --el-color-primary-light-9: #eaf3ff;
+  --el-color-primary-dark-2: var(--gov-accent);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  color: var(--gov-text);
+  background: var(--gov-bg);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #b9c1cf;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: #eef1f5;
+}
