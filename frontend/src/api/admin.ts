@@ -66,4 +66,11 @@ export const adminApi = {
   async deleteScene(sceneId: number): Promise<void> {
     await axios.delete(`${API_BASE_URL}/scenes/${sceneId}`)
   },
+
+  async listModels(detectApi?: string): Promise<string[]> {
+    const response = await axios.get<{ models: string[] }>(`${API_BASE_URL}/models`, {
+      params: detectApi ? { detect_api: detectApi } : undefined,
+    })
+    return response.data.models || []
+  },
 }

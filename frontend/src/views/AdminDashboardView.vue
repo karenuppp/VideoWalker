@@ -104,7 +104,15 @@
                 <el-input-number v-model="sceneForm.frame_interval_seconds" :min="1" :max="3600" />
               </el-form-item>
               <el-form-item label="模型名称" class="line-input">
-                <el-input v-model="sceneForm.model_name" placeholder="如：best" />
+                <el-select
+                  v-model="sceneForm.model_name"
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="请选择或输入模型名称"
+                >
+                  <el-option v-for="model in availableModels" :key="model" :label="model" :value="model" />
+                </el-select>
               </el-form-item>
               <el-form-item label="识别API" class="line-input">
                 <el-input v-model="sceneForm.detect_api" placeholder="http://host:port/infer" />
@@ -166,6 +174,7 @@ const activeTab = ref('camera')
 const loadingAll = ref(false)
 const cameras = ref<AdminCamera[]>([])
 const scenes = ref<SceneItem[]>([])
+const availableModels = ref<string[]>([])
 
 const cameraForm = reactive({
   camera_id: '',
@@ -197,6 +206,13 @@ async function refreshAll() {
     const [cameraData, sceneData] = await Promise.all([adminApi.listCameras(), adminApi.listScenes()])
     cameras.value = cameraData
     scenes.value = sceneData
+
+    try {
+      availableModels.value = await adminApi.listModels(sceneForm.detect_api)
+    } catch (modelError) {
+      console.error(modelError)
+      availableModels.value = []
+    }
   } catch (error) {
     console.error(error)
     ElMessage.error('管理台数据加载失败')

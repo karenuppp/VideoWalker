@@ -42,6 +42,13 @@ class ModelRegistry:
         filename = model_name if model_name.endswith(".pt") else f"{model_name}.pt"
         return (self.models_root / filename).resolve()
 
+    def list_models(self) -> list[str]:
+        models: list[str] = []
+        for item in self.models_root.glob("*.pt"):
+            if item.is_file():
+                models.append(item.stem)
+        return sorted(set(models))
+
     def get(self, model_name: str):
         with self._lock:
             if model_name in self._models:
@@ -84,6 +91,14 @@ async def health() -> dict[str, Any]:
         "status": "ok",
         "models_root": str(registry.models_root),
         "loaded_models": list(registry._models.keys()),
+        "available_models": registry.list_models(),
+    }
+
+
+@app.get("/models")
+async def list_models() -> dict[str, Any]:
+    return {
+        "models": registry.list_models(),
     }
 
 

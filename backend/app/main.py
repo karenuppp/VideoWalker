@@ -13,6 +13,7 @@ from app.api.v1.admin import (
     cameras as admin_cameras,
     scenes as admin_scenes,
     policies as admin_policies,
+    models as admin_models,
 )
 from app.api.v1.user import alerts as user_alerts
 from app.api.v1.internal import system as internal_system
@@ -98,6 +99,7 @@ app.include_router(system.router, prefix="/api/v1")
 app.include_router(admin_cameras.router, prefix="/api/v1")
 app.include_router(admin_scenes.router, prefix="/api/v1")
 app.include_router(admin_policies.router, prefix="/api/v1")
+app.include_router(admin_models.router, prefix="/api/v1")
 app.include_router(user_alerts.router, prefix="/api/v1/user")
 app.include_router(internal_system.router, prefix="/api/v1")
 
