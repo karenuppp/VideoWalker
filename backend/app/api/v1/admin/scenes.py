@@ -1,6 +1,7 @@
 """Admin APIs for scene management (camera-bound)."""
+import json
 import re
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -24,6 +25,18 @@ def _to_scene_key(name: str) -> str:
     return key or "scene"
 
 
+def _ensure_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
 class SceneCreateRequest(BaseModel):
     camera_id: int
     name: str = Field(..., min_length=1, max_length=128)
@@ -31,6 +44,7 @@ class SceneCreateRequest(BaseModel):
     detect_api: str = Field(..., min_length=1, max_length=255)
     frame_interval_seconds: Optional[int] = Field(default=None, ge=1)
     model_name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    rule: Optional[dict] = None
 
 
 class SceneUpdateRequest(BaseModel):
@@ -40,6 +54,7 @@ class SceneUpdateRequest(BaseModel):
     enabled: Optional[bool] = None
     frame_interval_seconds: Optional[int] = Field(default=None, ge=1)
     model_name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    rule: Optional[dict] = None
 
 
 class SceneResponse(BaseModel):
@@ -53,6 +68,7 @@ class SceneResponse(BaseModel):
     enabled: bool
     frame_interval_seconds: Optional[int]
     model_name: Optional[str]
+    rule: Optional[Dict[str, Any]] = None
 
 
 @router.get("", response_model=list[SceneResponse])
@@ -71,6 +87,7 @@ async def list_scenes(db: AsyncSession = Depends(get_db)):
                 CameraSceneBinding.frame_interval_seconds,
                 CameraSceneBinding.model_name,
                 SceneVersion.model_name,
+                SceneVersion.params,
             )
             .join(Camera, Camera.id == CameraSceneBinding.camera_id)
             .join(SceneVersion, SceneVersion.id == CameraSceneBinding.scene_version_id)
@@ -91,6 +108,7 @@ async def list_scenes(db: AsyncSession = Depends(get_db)):
             enabled=row[7],
             frame_interval_seconds=row[8],
             model_name=row[9] or row[10],
+            rule=_ensure_dict(row[11]).get("rule"),
         )
         for row in rows
     ]
@@ -125,6 +143,10 @@ async def create_scene(payload: SceneCreateRequest, db: AsyncSession = Depends(g
     await db.flush()
 
     model_name = payload.model_name or scene_key
+    params: Dict[str, Any] = {"rule": {"type": "presence", "target": "any", "op": ">=", "threshold": 1}}
+    if isinstance(payload.rule, dict):
+        merged_rule = {**params["rule"], **payload.rule}
+        params["rule"] = merged_rule
 
     version = SceneVersion(
         scene_template_id=template.id,
@@ -133,7 +155,7 @@ async def create_scene(payload: SceneCreateRequest, db: AsyncSession = Depends(g
         model_name=model_name,
         prompt=payload.description or payload.name,
         confidence_threshold=0.7,
-        params={},
+        params=params,
         is_published=True,
     )
     db.add(version)
@@ -163,6 +185,7 @@ async def create_scene(payload: SceneCreateRequest, db: AsyncSession = Depends(g
         enabled=binding.enabled,
         frame_interval_seconds=binding.frame_interval_seconds,
         model_name=binding.model_name or version.model_name,
+        rule=(version.params or {}).get("rule") if isinstance(version.params, dict) else None,
     )
 
 
@@ -200,6 +223,13 @@ async def update_scene(
     if "model_name" in updates and updates["model_name"]:
         binding.model_name = updates["model_name"]
         scene_version.model_name = updates["model_name"]
+    if "rule" in updates:
+        params = _ensure_dict(scene_version.params)
+        rule = params.get("rule") if isinstance(params.get("rule"), dict) else {}
+        if isinstance(updates["rule"], dict):
+            rule = {**rule, **updates["rule"]}
+            params["rule"] = rule
+            scene_version.params = params
 
     scene_version.prompt = template.description or template.name
 
@@ -218,6 +248,7 @@ async def update_scene(
         enabled=binding.enabled,
         frame_interval_seconds=binding.frame_interval_seconds,
         model_name=binding.model_name or scene_version.model_name,
+        rule=_ensure_dict(scene_version.params).get("rule"),
     )
 
 

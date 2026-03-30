@@ -66,10 +66,14 @@ class AIService:
 
             raw = response.json()
             detection = self._normalize_result(raw, scene_key, selected_model)
+            details = detection.get("details") if isinstance(detection.get("details"), dict) else {}
+            count = details.get("count")
+            if count is None:
+                count = details.get("total_count")
             logger.info(
                 "YOLO detection complete: "
                 f"scene={scene_key}, model={selected_model}, "
-                f"detected={detection['detected']}, confidence={detection['confidence']}"
+                f"detected={detection['detected']}, confidence={detection['confidence']}, count={count}"
             )
             return detection
 
@@ -97,6 +101,21 @@ class AIService:
         details.setdefault("model_name", model_name)
         details.setdefault("boxes", raw.get("boxes", []))
         details.setdefault("labels", raw.get("labels", []))
+        if "class_counts" not in details:
+            class_counts: Dict[str, int] = {}
+            boxes = details.get("boxes") or []
+            for item in boxes:
+                label = item.get("label")
+                if not label:
+                    continue
+                class_counts[label] = class_counts.get(label, 0) + 1
+            if class_counts:
+                details["class_counts"] = class_counts
+        if "total_count" not in details:
+            if isinstance(details.get("class_counts"), dict):
+                details["total_count"] = sum(details["class_counts"].values())
+            else:
+                details["total_count"] = details.get("count")
 
         return {
             "detected": detected,

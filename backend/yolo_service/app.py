@@ -155,6 +155,9 @@ async def infer(
 
         detected = len(detections) > 0
         labels = list({item.label for item in detections})
+        class_counts: dict[str, int] = {}
+        for item in detections:
+            class_counts[item.label] = class_counts.get(item.label, 0) + 1
         boxes_payload = [
             {
                 "cls": item.cls,
@@ -178,6 +181,8 @@ async def infer(
                 "model_name": model_name,
                 "confidence_threshold": confidence_threshold,
                 "count": len(detections),
+                "total_count": len(detections),
+                "class_counts": class_counts,
             },
             boxes=boxes_payload,
             labels=labels,

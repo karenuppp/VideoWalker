@@ -69,3 +69,7 @@ htmlcov/
 
 # models
 .pt
+
+# Claude / OMC state
+.claude/
+.omc/

@@ -17,4 +17,10 @@ export interface SceneItem {
   enabled: boolean
   frame_interval_seconds: number | null
   model_name?: string | null
+  rule?: {
+    type?: string
+    target?: string
+    op?: string
+    threshold?: number
+  } | null
 }

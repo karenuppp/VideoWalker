@@ -1,8 +1,8 @@
 """
 Alert service.
 """
-from typing import List, Optional, Dict
-from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from app.config import settings
 from app.utils.logger import logger
 from app.utils.exceptions import DatabaseException
 from app.services.websocket_service import WebSocketService
+from app.utils.time import now
 
 
 class  AlertService:
@@ -26,14 +27,14 @@ class  AlertService:
     async def create_alert(
         self,
         camera_id: int,
-        detection_result: Dict,
+        detection_result: dict,
         image_path: str,
         detected_at: Optional[datetime] = None,
         alert_type: Optional[str] = None,
     ) -> Alert:
         try:
             if detected_at is None:
-                detected_at = datetime.now(timezone(timedelta(hours=8)))
+                detected_at = now()
 
             alert_type_value = alert_type or detection_result.get("scene_type") or "other"
             dedup_cutoff = detected_at - timedelta(seconds=settings.ALERT_DEDUP_SECONDS)

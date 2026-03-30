@@ -48,9 +48,11 @@ class Settings(BaseSettings):
     QUEUE_WORKER_COUNT: int = 3
     TASK_MAX_RETRIES: int = 2
     TASK_POLL_INTERVAL_SECONDS: float = 0.5
+    ENQUEUE_TICK_SECONDS: float = 5.0
 
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "./logs/videowalker.log"
+    COUNT_ALERT_LOG_FILE: str = "./logs/count_alerts.log"
 
     CORS_ORIGINS: list = [
         "http://localhost:80",

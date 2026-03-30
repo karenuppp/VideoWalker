@@ -34,6 +34,20 @@ def setup_logger():
         compression="zip",
         encoding="utf-8"
     )
+
+    # 目标数量预警日志（仅记录count场景超阈值）
+    count_log_path = Path(settings.COUNT_ALERT_LOG_FILE)
+    count_log_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.add(
+        settings.COUNT_ALERT_LOG_FILE,
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+        level="INFO",
+        rotation="10 MB",
+        retention="30 days",
+        compression="zip",
+        encoding="utf-8",
+        filter=lambda record: record["extra"].get("count_alert") is True,
+    )
     
     return logger
 

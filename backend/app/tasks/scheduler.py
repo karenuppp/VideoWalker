@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select, update
@@ -17,6 +17,7 @@ from app.services.alert_service import AlertService
 from app.services.frame_service import FrameService
 from app.services.video_service import VideoService
 from app.utils.logger import logger
+from app.utils.time import now, ensure_tz
 
 
 class FrameScheduler:
@@ -33,6 +34,70 @@ class FrameScheduler:
         self._workers: list[asyncio.Task] = []
         self._stop_event = asyncio.Event()
 
+    @staticmethod
+    def _compare(op: str, value: float, threshold: float) -> bool:
+        if op == ">":
+            return value > threshold
+        if op == "==":
+            return value == threshold
+        if op == "<":
+            return value < threshold
+        if op == "<=":
+            return value <= threshold
+        return value >= threshold
+
+    @staticmethod
+    def _extract_count(details: dict, target: str) -> int | None:
+        if target in ("any", "*", None, ""):
+            # Prefer "count" (often target_count in people_count_service), fallback to total_count
+            total = details.get("count")
+            if total is None:
+                total = details.get("total_count")
+            return int(total) if total is not None else None
+        class_counts = details.get("class_counts")
+        if isinstance(class_counts, dict):
+            value = class_counts.get(target)
+            return int(value) if value is not None else 0
+        labels = details.get("labels")
+        if isinstance(labels, list) and target in labels:
+            return 1
+        return None
+
+    def _evaluate_rule(self, detection: dict, scene_version: SceneVersion) -> dict:
+        params = scene_version.params if isinstance(scene_version.params, dict) else {}
+        rule = params.get("rule") if isinstance(params.get("rule"), dict) else {}
+        rule_type = str(rule.get("type") or "presence").lower()
+        target = rule.get("target") or "any"
+        op = rule.get("op") or ">="
+        threshold = rule.get("threshold")
+        if threshold is None:
+            threshold = 1
+
+        details = detection.get("details") if isinstance(detection.get("details"), dict) else {}
+        count = self._extract_count(details, target)
+        if count is None:
+            count = 1 if detection.get("detected") else 0
+            if rule_type == "count" and threshold and threshold > 1:
+                logger.warning(
+                    "Count rule missing class_counts/total_count, "
+                    f"fallback to detected flag only. scene_version_id={scene_version.id}"
+                )
+
+        if rule_type == "count":
+            matched = self._compare(str(op), float(count), float(threshold))
+        else:
+            # presence: any detection of target >= 1
+            matched = count >= 1
+
+        return {
+            "rule_type": rule_type,
+            "target": target,
+            "op": op,
+            "threshold": threshold,
+            "count": int(count) if count is not None else 0,
+            "matched": matched,
+        }
+
     async def _has_active_task(self, db, binding_id: int) -> bool:
         query = select(DetectionTask.id).where(
             DetectionTask.binding_id == binding_id,
@@ -45,9 +110,7 @@ class FrameScheduler:
         interval = interval_seconds or settings.FRAME_INTERVAL_VALUE
         if last_run_at is None:
             return True
-        last_run = last_run_at
-        if last_run.tzinfo is None:
-            last_run = last_run.replace(tzinfo=timezone.utc)
+        last_run = ensure_tz(last_run_at)
         return (now - last_run).total_seconds() >= interval
 
     async def _enqueue_due_tasks(self):
@@ -56,7 +119,7 @@ class FrameScheduler:
             return
 
         async with self._enqueue_lock:
-            now = datetime.now(timezone(timedelta(hours=8)))
+            now_time = now()
             enqueued_count = 0
 
             async with self.db_factory() as db:
@@ -77,7 +140,7 @@ class FrameScheduler:
                 rows = (await db.execute(query)).all()
 
                 for binding, scene_key in rows:
-                    if not self._is_due(now, binding.last_run_at, binding.frame_interval_seconds):
+                    if not self._is_due(now_time, binding.last_run_at, binding.frame_interval_seconds):
                         continue
 
                     if await self._has_active_task(db, binding.id):
@@ -89,7 +152,7 @@ class FrameScheduler:
                         scene_version_id=binding.scene_version_id,
                         status="pending",
                         retries=0,
-                        scheduled_for=now,
+                        scheduled_for=now_time,
                     )
                     db.add(task)
                     enqueued_count += 1
@@ -100,13 +163,13 @@ class FrameScheduler:
                 logger.info(f"Task enqueue tick complete: enqueued={enqueued_count}")
 
     async def _claim_task(self) -> int | None:
-        now = datetime.now(timezone(timedelta(hours=8)))
+        now_time = now()
         async with self.db_factory() as db:
             query = (
                 select(DetectionTask.id)
                 .where(
                     DetectionTask.status == "pending",
-                    DetectionTask.scheduled_for <= now,
+                    DetectionTask.scheduled_for <= now_time,
                 )
                 .order_by(DetectionTask.scheduled_for.asc(), DetectionTask.id.asc())
                 .limit(1)
@@ -122,7 +185,7 @@ class FrameScheduler:
                     DetectionTask.id == task_id,
                     DetectionTask.status == "pending",
                 )
-                .values(status="running", started_at=now, updated_at=now)
+                .values(status="running", started_at=now_time, updated_at=now_time)
             )
             await db.commit()
             if result.rowcount == 0:
@@ -152,7 +215,7 @@ class FrameScheduler:
         return stream_url
 
     async def _execute_task(self, task_id: int, worker_name: str):
-        now = datetime.now(timezone.utc)
+        now_time = now()
         async with self.db_factory() as db:
             task = await db.get(DetectionTask, task_id)
             if not task:
@@ -164,7 +227,7 @@ class FrameScheduler:
             if not camera or not binding or not scene_version:
                 task.status = "failed"
                 task.error_message = "task references missing camera/binding/scene_version"
-                task.finished_at = now
+                task.finished_at = now_time
                 await db.commit()
                 return
 
@@ -172,7 +235,7 @@ class FrameScheduler:
             if not scene_template:
                 task.status = "failed"
                 task.error_message = "scene template not found"
-                task.finished_at = now
+                task.finished_at = now_time
                 await db.commit()
                 return
 
@@ -180,7 +243,7 @@ class FrameScheduler:
 
         try:
             stream_url = await self._get_stream_url(camera)
-            timestamp = datetime.now(timezone(timedelta(hours=8)))
+            timestamp = now()
             frame_path = await self.frame_service.capture_frame(stream_url, camera.camera_id, timestamp)
 
             detection = await self.ai_service.detect_scene(
@@ -227,7 +290,29 @@ class FrameScheduler:
                     else scene_version.confidence_threshold
                 ) or 0.0
                 confidence = float(detection.get("confidence", 0.0) or 0.0)
-                if bool(detection.get("detected", False)) and confidence >= threshold:
+
+                rule_eval = self._evaluate_rule(detection, scene_version)
+                matched = bool(rule_eval["matched"])
+                rule_type = rule_eval["rule_type"]
+
+                if rule_type == "count" and matched:
+                    logger.bind(count_alert=True).info(
+                        "count alert: time={} count={} op={} threshold={} target={} "
+                        "camera_id={} binding_id={} scene_version_id={} scene_key={}",
+                        timestamp.isoformat(),
+                        rule_eval["count"],
+                        rule_eval["op"],
+                        rule_eval["threshold"],
+                        rule_eval["target"],
+                        camera.camera_id,
+                        binding.id,
+                        scene_version.id,
+                        scene_key,
+                    )
+
+                should_alert = matched if rule_type == "count" else (matched and confidence >= threshold)
+
+                if should_alert:
                     alert_service = AlertService(db)
                     await alert_service.create_alert(
                         camera_id=camera.id,
@@ -267,12 +352,12 @@ class FrameScheduler:
                 retries = db_task.retries + 1
                 db_task.retries = retries
                 db_task.error_message = str(e)
-                db_task.finished_at = datetime.now(timezone(timedelta(hours=8)))
+                db_task.finished_at = now()
 
                 if retries <= settings.TASK_MAX_RETRIES:
                     db_task.status = "pending"
                     db_task.started_at = None
-                    db_task.scheduled_for = datetime.now(timezone(timedelta(hours=8))) + timedelta(seconds=2)
+                    db_task.scheduled_for = now() + timedelta(seconds=2)
                 else:
                     db_task.status = "failed"
 
@@ -302,11 +387,12 @@ class FrameScheduler:
             return
 
         interval = interval or settings.FRAME_INTERVAL_VALUE
+        enqueue_tick = float(settings.ENQUEUE_TICK_SECONDS or 5.0)
 
         self.scheduler.add_job(
             self._enqueue_due_tasks,
             "interval",
-            seconds=interval,
+            seconds=enqueue_tick,
             id="task_enqueue",
             replace_existing=True,
             max_instances=1,
@@ -323,7 +409,10 @@ class FrameScheduler:
 
         self.is_running = True
         logger.info(
-            f"Queue scheduler started, enqueue interval={interval}s, workers={settings.QUEUE_WORKER_COUNT}"
+            "Queue scheduler started, enqueue_tick=%ss, frame_interval=%ss, workers=%s",
+            enqueue_tick,
+            interval,
+            settings.QUEUE_WORKER_COUNT,
         )
 
     def stop(self):
@@ -372,7 +461,8 @@ class FrameScheduler:
         return {
             "running": self.is_running,
             "next_run_time": job.next_run_time.isoformat() if job else None,
-            "enqueue_interval": settings.FRAME_INTERVAL_VALUE,
+            "enqueue_interval": settings.ENQUEUE_TICK_SECONDS,
+            "frame_interval": settings.FRAME_INTERVAL_VALUE,
             "workers_total": settings.QUEUE_WORKER_COUNT,
             "workers_active": active_workers,
         }

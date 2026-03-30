@@ -32,14 +32,14 @@
               <div class="module-header">摄像头管理</div>
             </template>
 
-            <el-form :model="cameraForm" label-width="74px" size="small" @submit.prevent class="camera-form-grid">
-              <el-form-item label="编号" class="line-input">
+            <el-form :model="cameraForm" label-width="92px" size="small" @submit.prevent class="camera-form-grid">
+              <el-form-item label="摄像头编号" class="line-input">
                 <el-input v-model="cameraForm.camera_id" placeholder="CAM001" />
               </el-form-item>
-              <el-form-item label="名称" class="line-input">
+              <el-form-item label="摄像头名称" class="line-input">
                 <el-input v-model="cameraForm.name" placeholder="东门球机" />
               </el-form-item>
-              <el-form-item label="RTSP" class="line-input">
+              <el-form-item label="RTSP地址" class="line-input rtsp-field">
                 <el-input v-model="cameraForm.rtsp_url" placeholder="rtsp://..." />
               </el-form-item>
               <el-form-item class="camera-submit">
@@ -48,9 +48,9 @@
             </el-form>
 
             <el-table :data="cameras" size="small" height="340" class="data-table">
-              <el-table-column prop="camera_id" label="编号" min-width="110" />
-              <el-table-column prop="name" label="名称" min-width="130" />
-              <el-table-column prop="rtsp_url" label="RTSP地址" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="camera_id" label="摄像头编号" min-width="130" />
+              <el-table-column prop="name" label="摄像头名称" min-width="140" />
+              <el-table-column prop="rtsp_url" label="RTSP地址" min-width="220" show-overflow-tooltip />
               <el-table-column label="状态" width="82">
                 <template #default="scope">
                   <span :class="['status-pill', scope.row.enabled ? 'status-online' : 'status-offline']">
@@ -68,7 +68,7 @@
                   <svg viewBox="0 0 64 64" fill="none">
                     <rect x="7" y="16" width="50" height="34" rx="6" stroke="currentColor" stroke-width="2" />
                     <circle cx="32" cy="33" r="8" stroke="currentColor" stroke-width="2" />
-                    <path d="M7 24h50" stroke="currentColor" stroke-width="1.6" opacity="0.55" />
+                    <path d="M12 24h40" stroke="currentColor" stroke-width="1.6" opacity="0.55" />
                   </svg>
                   <p>暂无数据，点击新增开始配置</p>
                 </div>
@@ -109,13 +109,13 @@
                   filterable
                   allow-create
                   default-first-option
-                  placeholder="请选择或输入模型名称"
+                  placeholder="选择已启动的模型服务"
                 >
                   <el-option v-for="model in availableModels" :key="model" :label="model" :value="model" />
                 </el-select>
               </el-form-item>
               <el-form-item label="识别API" class="line-input">
-                <el-input v-model="sceneForm.detect_api" placeholder="http://host:port/infer" />
+                <el-input v-model="sceneForm.detect_api" placeholder="输入模型API地址" />
               </el-form-item>
               <el-form-item>
                 <el-button class="btn-primary" @click="saveScene">新增场景</el-button>
@@ -123,12 +123,33 @@
             </el-form>
 
             <el-table :data="scenes" size="small" height="360" class="data-table">
-              <el-table-column prop="camera_name" label="摄像头" min-width="140" />
-              <el-table-column prop="name" label="场景名称" min-width="130" />
-              <el-table-column prop="description" label="场景描述" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="camera_name" label="摄像头" min-width="110" />
+              <el-table-column prop="name" label="场景名称" min-width="110" />
+              <el-table-column prop="description" label="场景描述" min-width="140" show-overflow-tooltip />
               <el-table-column prop="frame_interval_seconds" label="抽帧频率(s)" width="120" />
               <el-table-column prop="model_name" label="模型" width="120" show-overflow-tooltip />
               <el-table-column prop="detect_api" label="识别API" min-width="220" show-overflow-tooltip />
+              <el-table-column label="启用目标数量统计" width="150">
+                <template #default="scope">
+                  <el-switch
+                    :model-value="getCountDraft(scope.row).enabled"
+                    @change="setCountEnabled(scope.row, $event)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="目标数量预警阈值" width="150">
+                <template #default="scope">
+                  <el-input
+                    class="count-threshold-input"
+                    type="number"
+                    inputmode="numeric"
+                    :model-value="String(getCountDraft(scope.row).threshold)"
+                    :disabled="!getCountDraft(scope.row).enabled"
+                    placeholder="阈值"
+                    @input="setCountThreshold(scope.row, $event)"
+                  />
+                </template>
+              </el-table-column>
               <el-table-column label="启用" width="86">
                 <template #default="scope">
                   <span :class="['status-pill', scope.row.enabled ? 'status-online' : 'status-offline']">
@@ -138,6 +159,7 @@
               </el-table-column>
               <el-table-column label="操作" width="180">
                 <template #default="scope">
+                  <el-button class="btn-ghost mini" @click="applyCountRule(scope.row)">更新</el-button>
                   <el-button class="btn-ghost mini" @click="toggleSceneEnabled(scope.row)">
                     {{ scope.row.enabled ? '停用' : '启用' }}
                   </el-button>
@@ -175,6 +197,28 @@ const loadingAll = ref(false)
 const cameras = ref<AdminCamera[]>([])
 const scenes = ref<SceneItem[]>([])
 const availableModels = ref<string[]>([])
+type CountDraft = { enabled: boolean; threshold: number; dirty?: boolean }
+const countDrafts = ref<Record<number, CountDraft>>({})
+
+function loadCountDrafts(): Record<number, CountDraft> {
+  try {
+    const raw = localStorage.getItem('vw_scene_count_drafts')
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'object' && parsed ? parsed : {}
+  } catch (error) {
+    console.error('Load count drafts failed', error)
+    return {}
+  }
+}
+
+function saveCountDrafts(next: Record<number, CountDraft>) {
+  try {
+    localStorage.setItem('vw_scene_count_drafts', JSON.stringify(next))
+  } catch (error) {
+    console.error('Save count drafts failed', error)
+  }
+}
 
 const cameraForm = reactive({
   camera_id: '',
@@ -187,8 +231,8 @@ const sceneForm = reactive({
   name: '',
   description: '',
   frame_interval_seconds: 30,
-  model_name: 'best',
-  detect_api: '/infer',
+  model_name: '',
+  detect_api: '',
 })
 
 function resetSceneForm() {
@@ -196,8 +240,8 @@ function resetSceneForm() {
   sceneForm.name = ''
   sceneForm.description = ''
   sceneForm.frame_interval_seconds = 30
-  sceneForm.model_name = 'best'
-  sceneForm.detect_api = '/infer'
+  sceneForm.model_name = ''
+  sceneForm.detect_api = ''
 }
 
 async function refreshAll() {
@@ -206,6 +250,20 @@ async function refreshAll() {
     const [cameraData, sceneData] = await Promise.all([adminApi.listCameras(), adminApi.listScenes()])
     cameras.value = cameraData
     scenes.value = sceneData
+    const storedDrafts = loadCountDrafts()
+    const nextDrafts: Record<number, CountDraft> = {}
+    for (const scene of sceneData) {
+      const stored = storedDrafts[scene.id]
+      if (stored?.dirty) {
+        nextDrafts[scene.id] = stored
+        continue
+      }
+      const enabled = scene.rule?.type === 'count'
+      const threshold = scene.rule?.threshold && scene.rule.threshold > 0 ? scene.rule.threshold : 1
+      nextDrafts[scene.id] = { enabled, threshold, dirty: false }
+    }
+    countDrafts.value = nextDrafts
+    saveCountDrafts(nextDrafts)
 
     try {
       availableModels.value = await adminApi.listModels(sceneForm.detect_api)
@@ -258,7 +316,14 @@ async function saveScene() {
   }
 
   try {
-    await adminApi.createScene({ ...sceneForm })
+    await adminApi.createScene({
+      camera_id: sceneForm.camera_id,
+      name: sceneForm.name,
+      description: sceneForm.description,
+      detect_api: sceneForm.detect_api,
+      frame_interval_seconds: sceneForm.frame_interval_seconds,
+      model_name: sceneForm.model_name,
+    })
     ElMessage.success('场景创建成功')
     resetSceneForm()
     await refreshAll()
@@ -287,6 +352,66 @@ async function toggleSceneEnabled(scene: SceneItem) {
   } catch (error) {
     console.error(error)
     ElMessage.error('更新场景状态失败')
+  }
+}
+
+function getCountDraft(scene: SceneItem) {
+  const existing = countDrafts.value[scene.id]
+  if (existing) return existing
+  const enabled = scene.rule?.type === 'count'
+  const threshold = scene.rule?.threshold && scene.rule.threshold > 0 ? scene.rule.threshold : 1
+  const draft = { enabled, threshold, dirty: false }
+  countDrafts.value[scene.id] = draft
+  saveCountDrafts(countDrafts.value)
+  return draft
+}
+
+function setCountEnabled(scene: SceneItem, enabled: boolean) {
+  const draft = getCountDraft(scene)
+  draft.enabled = enabled
+  draft.dirty = true
+  countDrafts.value[scene.id] = { ...draft }
+  saveCountDrafts(countDrafts.value)
+}
+
+function setCountThreshold(scene: SceneItem, value: string | number | undefined) {
+  const draft = getCountDraft(scene)
+  const numeric = typeof value === 'string' ? Number(value) : value
+  const threshold = numeric && numeric > 0 ? numeric : 1
+  draft.threshold = threshold
+  draft.dirty = true
+  countDrafts.value[scene.id] = { ...draft }
+  saveCountDrafts(countDrafts.value)
+}
+
+async function applyCountRule(scene: SceneItem) {
+  const draft = countDrafts.value[scene.id]
+  const enabled = draft?.enabled ?? false
+  const threshold = draft?.threshold && draft.threshold > 0 ? draft.threshold : 1
+  const rule = enabled
+    ? {
+        type: 'count',
+        target: 'any',
+        op: '>=',
+        threshold,
+      }
+    : {
+        type: 'presence',
+        target: 'any',
+        op: '>=',
+        threshold: 1,
+      }
+  try {
+    await adminApi.updateScene(scene.id, { rule })
+    scene.rule = rule
+    const draft = getCountDraft(scene)
+    draft.dirty = false
+    countDrafts.value[scene.id] = { ...draft }
+    saveCountDrafts(countDrafts.value)
+    ElMessage.success('目标数量统计已更新')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('模型不支持启用目标数量统计')
   }
 }
 
@@ -400,8 +525,16 @@ onMounted(async () => {
 .camera-form-grid {
   display: grid;
   grid-template-columns: 0.9fr 1fr 1.7fr auto;
-  gap: 10px 14px;
+  gap: 16px 18px;
   align-items: center;
+}
+
+.camera-form-grid :deep(.rtsp-field .el-form-item__content) {
+  margin-left: 12px;
+}
+
+.count-threshold-input :deep(.el-input__wrapper) {
+  min-width: 120px;
 }
 
 .camera-form-grid :deep(.el-form-item) {

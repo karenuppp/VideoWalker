@@ -43,6 +43,12 @@ export const adminApi = {
     detect_api: string
     frame_interval_seconds?: number
     model_name?: string
+    rule?: {
+      type?: string
+      target?: string
+      op?: string
+      threshold?: number
+    }
   }): Promise<SceneItem> {
     const response = await axios.post<SceneItem>(`${API_BASE_URL}/scenes`, payload)
     return response.data
@@ -57,6 +63,12 @@ export const adminApi = {
       enabled?: boolean
       frame_interval_seconds?: number
       model_name?: string
+      rule?: {
+        type?: string
+        target?: string
+        op?: string
+        threshold?: number
+      }
     },
   ): Promise<SceneItem> {
     const response = await axios.patch<SceneItem>(`${API_BASE_URL}/scenes/${sceneId}`, payload)

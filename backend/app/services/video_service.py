@@ -1,10 +1,10 @@
 from typing import Dict, Optional
-from datetime import datetime
 import httpx
 from app.models.camera import Camera
 from app.utils.logger import logger
 from app.utils.exceptions import VideoStreamException
 from app.config import settings
+from app.utils.time import now
 
 
 class VideoService:
@@ -32,7 +32,7 @@ class VideoService:
         # 检查是否需要重新获取RTSP地址
         need_fetch = True
         if camera and camera.stream_url and camera.stream_url_updated_at:
-            elapsed = datetime.now() - camera.stream_url_updated_at
+            elapsed = now() - camera.stream_url_updated_at
             if elapsed.total_seconds() < self.active_seconds:
                 need_fetch = False
                 logger.info(f"使用缓存的播放URL: {camera_id}, 已缓存 {elapsed.total_seconds() / 86400:.1f} 天")
@@ -61,7 +61,7 @@ class VideoService:
                 stream_url = result.get("stream_url") or result.get("url", "")
                 if camera and stream_url:
                     camera.stream_url = stream_url
-                    camera.stream_url_updated_at = datetime.now()
+                    camera.stream_url_updated_at = now()
                     await db.commit()
                     logger.info(f"已更新并缓存播放URL: {camera_id}")
 

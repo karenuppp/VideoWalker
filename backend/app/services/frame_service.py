@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.utils.logger import logger
 from app.utils.exceptions import FrameCaptureException
 from app.config import settings
+from app.utils.time import now
 
 
 class FrameService:
@@ -119,7 +120,7 @@ class FrameService:
         timestamp: Optional[datetime] = None,
     ) -> str:
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = now()
 
         frame_path = self._generate_frame_path(camera_id, timestamp)
 

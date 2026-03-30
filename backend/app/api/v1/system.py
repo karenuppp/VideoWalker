@@ -11,6 +11,7 @@ from app.models.alert import Alert
 from app.models.frame import Frame
 from app.tasks.runtime import get_scheduler, get_scheduler_status
 from app.utils.logger import logger
+from app.utils.time import today_date
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -68,7 +69,7 @@ async def get_system_status(
         frame_total = await db.scalar(select(func.count(Frame.id)))
         frame_today = await db.scalar(
             select(func.count(Frame.id)).where(
-                func.date(Frame.created_at) == datetime.now().date()
+                func.date(Frame.created_at) == today_date()
             )
         )
 
