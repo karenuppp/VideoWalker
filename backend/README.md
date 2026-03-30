@@ -36,7 +36,6 @@ uv venv .venv --python 3.12.8
 source .venv/bin/activate
 uv pip install -r requirements.txt
 python -m app.main
-```
 
 默认端口：`9002`
 
