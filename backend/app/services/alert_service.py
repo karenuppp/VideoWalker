@@ -265,7 +265,7 @@ class  AlertService:
             logger.error(f"Update alert status failed: {e}")
             raise DatabaseException(f"Update alert status failed: {str(e)}")
 
-    async def get_alert_stats(self) -> Dict:
+    async def get_alert_stats(self) -> dict:
         try:
             total_query = select(func.count(Alert.id))
             total_result = await self.db.execute(total_query)
