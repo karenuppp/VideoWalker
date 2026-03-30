@@ -310,7 +310,9 @@ class FrameScheduler:
                         scene_key,
                     )
 
-                should_alert = matched if rule_type == "count" else (matched and confidence >= threshold)
+                # count rule: matched already means count OP threshold, confidence is irrelevant
+                # presence rule: any detection (matched=True) triggers alert, ignore low-confidence noise via scene confidence_threshold
+                should_alert = matched if rule_type == "count" else matched
 
                 if should_alert:
                     alert_service = AlertService(db)
