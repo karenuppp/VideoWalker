@@ -513,7 +513,7 @@ onMounted(async () => {
 }
 
 .module-card :deep(.el-card__body) {
-  padding: 12px 28px 28px;
+  padding: 16px 28px 28px;
 }
 
 .module-header {
@@ -551,10 +551,10 @@ onMounted(async () => {
 }
 
 .scene-form {
-  margin-top: 14px;
+  margin-top: 18px;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 0.9fr 0.9fr 1.2fr auto;
-  gap: 10px 14px;
+  gap: 14px 18px;
   align-items: center;
 }
 
@@ -632,6 +632,8 @@ onMounted(async () => {
 
 :deep(.el-input-number) {
   width: 148px;
+  border-bottom: 1px solid #c6d6ee;
+  border-radius: 0;
 }
 
 :deep(.el-input-number__decrease),
@@ -644,6 +646,7 @@ onMounted(async () => {
   top: 50%;
   transform: translateY(-50%);
   transition: transform 0.2s ease, background-color 0.2s ease;
+  box-shadow: none;
 }
 
 :deep(.el-input-number__decrease:hover),
@@ -663,6 +666,18 @@ onMounted(async () => {
 :deep(.el-input-number .el-input__inner) {
   padding-left: 36px;
   padding-right: 36px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+:deep(.el-input-number:not(.is-disabled):hover),
+:deep(.el-input-number.is-focused) {
+  border-color: #1677ff;
+}
+
+:deep(.el-input-number.is-focused .el-input__inner) {
+  color: #1f2a3d;
 }
 
 .data-table {
