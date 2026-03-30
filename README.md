@@ -8,20 +8,20 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      VideoWalker2                             │
+│                      VideoWalker                             │
 ├────────────────────────┬─────────────────────────────────────┤
-│   Frontend (Vue3)      │   Backend (FastAPI)                  │
-│   管理台 + 用户端       │   API + 调度 + 抽帧 + 告警           │
-│   localhost:3000       │   localhost:9002                     │
+│   Frontend (Vue3)      │   Backend (FastAPI)                 │
+│   管理台 + 用户端        │   API + 调度 + 抽帧 + 告警            │
+│   localhost:3000       │   localhost:9002                    │
 └────────┬───────────────┴─────────────┬───────────────────────┘
-         │                              │
-         │  WebSocket                   │  RTSP
-         │◄─────────────────────────────┼────────────────────►
-         │                              │
+         │                             │
+         │  WebSocket                  │  RTSP
+         │◄────────────────────────────┼────────────────────►
+         │                             │
     ┌────▼────┐              ┌─────────▼──────────┐
-    │ 前端告警 │              │   YOLO Service      │
-    │ 实时推送 │              │   localhost:9001     │
-    └─────────┘              └─────────────────────┘
+    │ 前端告警 │              │   YOLO Service     │
+    │ 实时推送 │              │   localhost:9001   │
+    └─────────┘              └────────────────────┘
 ```
 
 **核心流程**：
@@ -37,7 +37,7 @@
 ## 目录结构
 
 ```
-VideoWalker2/
+VideoWalker/
 ├── backend/
 │   ├── app/
 │   │   ├── api/v1/          # FastAPI 路由
@@ -261,7 +261,7 @@ Camera (摄像头)
   "alert_type": "banner",
   "scene_name": "拉横幅检测",
   "confidence": 0.95,
-  "description": "检测到拉横幅检测",
+  "description": "检测到拉横幅",
   "image_path": "/storage/frames/2026/03/30/CAM001_xxx.jpg",
   "status": "unread",
   "detected_at": "2026-03-30T10:00:00+08:00",
