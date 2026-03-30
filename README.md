@@ -1,4 +1,4 @@
-# VideoWalker2
+# VideoWalker
 
 实时视频流智能监控平台。摄像头绑定识别场景，定时抽帧后送 YOLO 推理，超阈值推送前端告警。
 
