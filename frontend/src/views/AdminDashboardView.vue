@@ -403,7 +403,9 @@ async function applyCountRule(scene: SceneItem) {
       }
   try {
     await adminApi.updateScene(scene.id, { rule })
-    ElMessage.success('目标数量统计已更新')
+    // API success → update localStorage with current draft values
+    countDrafts.value[scene.id] = { enabled, threshold }
+    saveCountDrafts(countDrafts.value)
     ElMessage.success('目标数量统计已更新')
   } catch (error) {
     console.error(error)
