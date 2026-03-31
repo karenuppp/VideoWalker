@@ -197,7 +197,7 @@ const loadingAll = ref(false)
 const cameras = ref<AdminCamera[]>([])
 const scenes = ref<SceneItem[]>([])
 const availableModels = ref<string[]>([])
-type CountDraft = { enabled: boolean; threshold: number; dirty?: boolean }
+type CountDraft = { enabled: boolean; threshold: number }
 const countDrafts = ref<Record<number, CountDraft>>({})
 
 function loadCountDrafts(): Record<number, CountDraft> {
@@ -254,13 +254,15 @@ async function refreshAll() {
     const nextDrafts: Record<number, CountDraft> = {}
     for (const scene of sceneData) {
       const stored = storedDrafts[scene.id]
-      if (stored?.dirty) {
+      if (stored) {
+        // localStorage has user-modified draft — always preserve it
         nextDrafts[scene.id] = stored
         continue
       }
+      // No localStorage entry — initialize from backend
       const enabled = scene.rule?.type === 'count'
       const threshold = scene.rule?.threshold && scene.rule.threshold > 0 ? scene.rule.threshold : 1
-      nextDrafts[scene.id] = { enabled, threshold, dirty: false }
+      nextDrafts[scene.id] = { enabled, threshold }
     }
     countDrafts.value = nextDrafts
     saveCountDrafts(nextDrafts)
@@ -360,7 +362,7 @@ function getCountDraft(scene: SceneItem) {
   if (existing) return existing
   const enabled = scene.rule?.type === 'count'
   const threshold = scene.rule?.threshold && scene.rule.threshold > 0 ? scene.rule.threshold : 1
-  const draft = { enabled, threshold, dirty: false }
+  const draft = { enabled, threshold }
   countDrafts.value[scene.id] = draft
   saveCountDrafts(countDrafts.value)
   return draft
@@ -369,7 +371,6 @@ function getCountDraft(scene: SceneItem) {
 function setCountEnabled(scene: SceneItem, enabled: boolean) {
   const draft = getCountDraft(scene)
   draft.enabled = enabled
-  draft.dirty = true
   countDrafts.value[scene.id] = { ...draft }
   saveCountDrafts(countDrafts.value)
 }
@@ -379,7 +380,6 @@ function setCountThreshold(scene: SceneItem, value: string | number | undefined)
   const numeric = typeof value === 'string' ? Number(value) : value
   const threshold = numeric && numeric > 0 ? numeric : 1
   draft.threshold = threshold
-  draft.dirty = true
   countDrafts.value[scene.id] = { ...draft }
   saveCountDrafts(countDrafts.value)
 }
@@ -403,10 +403,7 @@ async function applyCountRule(scene: SceneItem) {
       }
   try {
     await adminApi.updateScene(scene.id, { rule })
-    // Only update localStorage after API succeeds, preserving dirty=false
-    const cleanDraft = { enabled, threshold, dirty: false }
-    countDrafts.value[scene.id] = cleanDraft
-    saveCountDrafts(countDrafts.value)
+    ElMessage.success('目标数量统计已更新')
     ElMessage.success('目标数量统计已更新')
   } catch (error) {
     console.error(error)
