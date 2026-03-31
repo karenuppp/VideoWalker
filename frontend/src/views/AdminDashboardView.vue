@@ -205,7 +205,14 @@ function loadCountDrafts(): Record<number, CountDraft> {
     const raw = localStorage.getItem('vw_scene_count_drafts')
     if (!raw) return {}
     const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed ? parsed : {}
+    if (typeof parsed !== 'object' || !parsed) return {}
+    // Normalize string keys back to numbers (JSON.stringify converts number keys to strings)
+    const normalized: Record<number, CountDraft> = {}
+    for (const [k, v] of Object.entries(parsed)) {
+      const numKey = Number(k)
+      if (!isNaN(numKey)) normalized[numKey] = v as CountDraft
+    }
+    return normalized
   } catch (error) {
     console.error('Load count drafts failed', error)
     return {}
