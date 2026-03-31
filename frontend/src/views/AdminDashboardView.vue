@@ -129,25 +129,23 @@
               <el-table-column prop="frame_interval_seconds" label="抽帧频率(s)" width="120" />
               <el-table-column prop="model_name" label="模型" width="120" show-overflow-tooltip />
               <el-table-column prop="detect_api" label="识别API" min-width="220" show-overflow-tooltip />
-              <el-table-column label="启用目标数量统计" width="150">
+              <el-table-column label="目标数量预警" width="180">
                 <template #default="scope">
-                  <el-switch
-                    :model-value="getCountDraft(scope.row).enabled"
-                    @change="setCountEnabled(scope.row, $event)"
-                  />
-                </template>
-              </el-table-column>
-              <el-table-column label="目标数量预警阈值" width="150">
-                <template #default="scope">
-                  <el-input
-                    class="count-threshold-input"
-                    type="number"
-                    inputmode="numeric"
-                    :model-value="String(getCountDraft(scope.row).threshold)"
-                    :disabled="!getCountDraft(scope.row).enabled"
-                    placeholder="阈值"
-                    @input="setCountThreshold(scope.row, $event)"
-                  />
+                  <div class="count-ctrl">
+                    <el-switch
+                      :model-value="isCountEnabled(scope.row)"
+                      @change="setCountEnabled(scope.row, $event)"
+                    />
+                    <el-input-number
+                      v-if="isCountEnabled(scope.row)"
+                      class="count-threshold"
+                      :model-value="getThreshold(scope.row)"
+                      :min="1"
+                      :max="9999"
+                      size="small"
+                      @change="setThreshold(scope.row, $event)"
+                    />
+                  </div>
                 </template>
               </el-table-column>
               <el-table-column label="启用" width="86">
@@ -159,7 +157,6 @@
               </el-table-column>
               <el-table-column label="操作" width="180">
                 <template #default="scope">
-                  <el-button class="btn-ghost mini" @click="applyCountRule(scope.row)">更新</el-button>
                   <el-button class="btn-ghost mini" @click="toggleSceneEnabled(scope.row)">
                     {{ scope.row.enabled ? '停用' : '启用' }}
                   </el-button>
@@ -197,33 +194,38 @@ const loadingAll = ref(false)
 const cameras = ref<AdminCamera[]>([])
 const scenes = ref<SceneItem[]>([])
 const availableModels = ref<string[]>([])
-type CountDraft = { enabled: boolean; threshold: number }
-const countDrafts = ref<Record<number, CountDraft>>({})
 
-function loadCountDrafts(): Record<number, CountDraft> {
-  try {
-    const raw = localStorage.getItem('vw_scene_count_drafts')
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    if (typeof parsed !== 'object' || !parsed) return {}
-    // Normalize string keys back to numbers (JSON.stringify converts number keys to strings)
-    const normalized: Record<number, CountDraft> = {}
-    for (const [k, v] of Object.entries(parsed)) {
-      const numKey = Number(k)
-      if (!isNaN(numKey)) normalized[numKey] = v as CountDraft
-    }
-    return normalized
-  } catch (error) {
-    console.error('Load count drafts failed', error)
-    return {}
-  }
+// Direct access to scene data — no localStorage intermediate layer
+function isCountEnabled(scene: SceneItem): boolean {
+  return scene.rule?.type === 'count'
 }
 
-function saveCountDrafts(next: Record<number, CountDraft>) {
+function getThreshold(scene: SceneItem): number {
+  return scene.rule?.threshold && scene.rule.threshold > 0 ? scene.rule.threshold : 1
+}
+
+function setCountEnabled(scene: SceneItem, enabled: boolean) {
+  const threshold = getThreshold(scene)
+  const rule = enabled
+    ? { type: 'count', target: 'any', op: '>=', threshold }
+    : { type: 'presence', target: 'any', op: '>=', threshold: 1 }
+  applyRuleAndRefresh(scene.id, rule)
+}
+
+function setThreshold(scene: SceneItem, value: number) {
+  const threshold = value > 0 ? value : 1
+  const rule = { type: 'count', target: 'any', op: '>=', threshold }
+  applyRuleAndRefresh(scene.id, rule)
+}
+
+async function applyRuleAndRefresh(sceneId: number, rule: Record<string, unknown>) {
   try {
-    localStorage.setItem('vw_scene_count_drafts', JSON.stringify(next))
+    await adminApi.updateScene(sceneId, { rule })
+    ElMessage.success('目标数量统计已更新')
+    await refreshAll()
   } catch (error) {
-    console.error('Save count drafts failed', error)
+    console.error(error)
+    ElMessage.error('更新失败')
   }
 }
 
@@ -257,22 +259,6 @@ async function refreshAll() {
     const [cameraData, sceneData] = await Promise.all([adminApi.listCameras(), adminApi.listScenes()])
     cameras.value = cameraData
     scenes.value = sceneData
-    const storedDrafts = loadCountDrafts()
-    const nextDrafts: Record<number, CountDraft> = {}
-    for (const scene of sceneData) {
-      const stored = storedDrafts[scene.id]
-      if (stored) {
-        // localStorage has user-modified draft — always preserve it
-        nextDrafts[scene.id] = stored
-        continue
-      }
-      // No localStorage entry — initialize from backend
-      const enabled = scene.rule?.type === 'count'
-      const threshold = scene.rule?.threshold && scene.rule.threshold > 0 ? scene.rule.threshold : 1
-      nextDrafts[scene.id] = { enabled, threshold }
-    }
-    countDrafts.value = nextDrafts
-    saveCountDrafts(nextDrafts)
 
     try {
       availableModels.value = await adminApi.listModels(sceneForm.detect_api)
@@ -361,62 +347,6 @@ async function toggleSceneEnabled(scene: SceneItem) {
   } catch (error) {
     console.error(error)
     ElMessage.error('更新场景状态失败')
-  }
-}
-
-function getCountDraft(scene: SceneItem) {
-  const existing = countDrafts.value[scene.id]
-  if (existing) return existing
-  const enabled = scene.rule?.type === 'count'
-  const threshold = scene.rule?.threshold && scene.rule.threshold > 0 ? scene.rule.threshold : 1
-  const draft = { enabled, threshold }
-  countDrafts.value[scene.id] = draft
-  saveCountDrafts(countDrafts.value)
-  return draft
-}
-
-function setCountEnabled(scene: SceneItem, enabled: boolean) {
-  const draft = getCountDraft(scene)
-  draft.enabled = enabled
-  countDrafts.value[scene.id] = { ...draft }
-  saveCountDrafts(countDrafts.value)
-}
-
-function setCountThreshold(scene: SceneItem, value: string | number | undefined) {
-  const draft = getCountDraft(scene)
-  const numeric = typeof value === 'string' ? Number(value) : value
-  const threshold = numeric && numeric > 0 ? numeric : 1
-  draft.threshold = threshold
-  countDrafts.value[scene.id] = { ...draft }
-  saveCountDrafts(countDrafts.value)
-}
-
-async function applyCountRule(scene: SceneItem) {
-  const draft = countDrafts.value[scene.id]
-  const enabled = draft?.enabled ?? false
-  const threshold = draft?.threshold && draft.threshold > 0 ? draft.threshold : 1
-  const rule = enabled
-    ? {
-        type: 'count',
-        target: 'any',
-        op: '>=',
-        threshold,
-      }
-    : {
-        type: 'presence',
-        target: 'any',
-        op: '>=',
-        threshold: 1,
-      }
-  try {
-    await adminApi.updateScene(scene.id, { rule })
-    // API success → update localStorage with current draft values
-    countDrafts.value[scene.id] = { enabled, threshold }
-    saveCountDrafts(countDrafts.value)
-    ElMessage.success('目标数量统计已更新')
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('模型不支持启用目标数量统计')
   }
 }
 
@@ -538,8 +468,14 @@ onMounted(async () => {
   margin-left: 12px;
 }
 
-.count-threshold-input :deep(.el-input__wrapper) {
-  min-width: 120px;
+.count-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.count-threshold :deep(.el-input__inner) {
+  text-align: center;
 }
 
 .camera-form-grid :deep(.el-form-item) {
