@@ -402,12 +402,11 @@ async function applyCountRule(scene: SceneItem) {
         threshold: 1,
       }
   try {
-    // Save clean state to localStorage before API call to avoid race with refreshAll
+    await adminApi.updateScene(scene.id, { rule })
+    // Only update localStorage after API succeeds, preserving dirty=false
     const cleanDraft = { enabled, threshold, dirty: false }
     countDrafts.value[scene.id] = cleanDraft
     saveCountDrafts(countDrafts.value)
-    scene.rule = rule
-    await adminApi.updateScene(scene.id, { rule })
     ElMessage.success('目标数量统计已更新')
   } catch (error) {
     console.error(error)

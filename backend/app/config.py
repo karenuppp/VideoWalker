@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_DETECTIONS: int = 5
     ALERT_DEDUP_SECONDS: int = 300
     QUEUE_WORKER_COUNT: int = 3
-    TASK_MAX_RETRIES: int = 2
+    TASK_MAX_RETRIES: int = 0
     TASK_POLL_INTERVAL_SECONDS: float = 0.5
     ENQUEUE_TICK_SECONDS: float = 5.0
 
